@@ -2,6 +2,7 @@ import os
 import glob
 import time
 import csv
+import json
 from datetime import datetime
 
 os.system('modprobe w1-gpio')
@@ -14,7 +15,10 @@ if not device_folders:
     raise RuntimeError("No DS18B20 sensor found.")
 
 device_file = device_folders[0] + '/w1_slave'
-csv_file = '/home/pi/temperature_log.csv'
+
+with open('config.json', 'r') as f:
+    config = json.load(f)
+
 
 def read_temp_raw():
     """Read raw lines from the 1-wire device file."""
@@ -59,4 +63,4 @@ def log_temperature(filename):
             writer.writerow(['Timestamp', 'Celsius'])
         writer.writerow([timestamp, f'{temp_c:.1f}'])
 
-log_temperature(csv_file)
+log_temperature(config['room_temperature_csv'])
