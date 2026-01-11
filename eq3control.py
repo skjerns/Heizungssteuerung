@@ -145,4 +145,4 @@ if __name__=='__main__':
 
     if args.set_temperature is None and not args.get_temperature:
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
-        print(timestamp, thermostat.target_temperature)
+        print(f'{timestamp}, {thermostat.target_temperature}')
