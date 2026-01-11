@@ -59,8 +59,6 @@ def log_temperature(filename):
 
     with open(filename, 'a', newline='') as f:
         writer = csv.writer(f)
-        if not file_exists:
-            writer.writerow(['Timestamp', 'Celsius'])
-        writer.writerow([timestamp, f'{temp_c:.1f}'])
+        writer.writerow([timestamp, f' {temp_c:.1f}'])
 
 log_temperature(config['room_temperature_csv'])
