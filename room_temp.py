@@ -28,15 +28,15 @@ def read_temp_celsius(max_retries=10):
     """Parse data with a retry limit and return only Celsius."""
     retries = 0
     lines = read_temp_raw()
-    
+
     while (not lines or lines[0].strip()[-3:] != 'YES') and retries < max_retries:
         time.sleep(0.2)
         lines = read_temp_raw()
         retries += 1
-    
+
     if retries >= max_retries or not lines:
         return None
-        
+
     equals_pos = lines[1].find('t=')
     if equals_pos != -1:
         temp_string = lines[1][equals_pos+2:]
@@ -46,18 +46,17 @@ def read_temp_celsius(max_retries=10):
 def log_temperature(filename):
     """Read temperature and append timestamped Celsius to CSV."""
     temp_c = read_temp_celsius()
-    
+
     if temp_c is None:
         return
 
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
     file_exists = os.path.isfile(filename)
-    
+
     with open(filename, 'a', newline='') as f:
         writer = csv.writer(f)
         if not file_exists:
             writer.writerow(['Timestamp', 'Celsius'])
         writer.writerow([timestamp, f'{temp_c:.1f}'])
-    with open('temperature_last.txt', 'w') as f:
-        f.write(f'{temp_c:.1f}')
+
 log_temperature(csv_file)
