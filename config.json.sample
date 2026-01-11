@@ -4,5 +4,7 @@
     "remote_ssh_key": "/path/to/your/ssh/key",
     "remote_target_user": "user",
     "remote_target_ip": "192.168.1.100",
-    "control_script_path": "/path/to/control.py"
+    "control_script_path": "/path/to/control.py",
+    "room_temp_file": "/var/log/room_temp.log",
+    "eq3_temp_file": "/var/log/eq3_temp.log"
 }
