@@ -137,11 +137,11 @@ if __name__=='__main__':
 
     thermostat = connect_thermostat()
 
-    if args.get_temperature is not None:
+    if args.get_temperature:
         print(thermostat.target_temperature)
 
     if args.set_temperature is not None:
-        set_thermostat(str(args.set_temperature))
+        set_thermostat(thermostat, str(args.set_temperature))
 
     if args.set_temperature is None and not args.get_temperature:
         print(str(thermostat))
