@@ -129,7 +129,7 @@ def set_thermostat(thermostat, value):
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description='Control EQ3 Bluetooth thermostat.')
-    group = parser.add_mutually_exclusive_group(required=True)
+    group = parser.add_mutually_exclusive_group()
     group.add_argument('--get_temperature', action='store_true', help='Get current thermostat status (default).')
     group.add_argument('--set_temperature', type=float, help='Set target temperature.')
 
