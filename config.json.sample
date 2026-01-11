@@ -1,5 +1,4 @@
 {
-    "value_file_path": "/path/to/value/file",
     "thermostat_mac_address": "00:1A:22:00:00:00",
     "remote_secret": "a_very_secret_string",
     "remote_ssh_key": "/path/to/your/ssh/key",

@@ -1,21 +1,17 @@
 <?php
 if (isset($_GET['value']) && !empty($_GET['value'])) {
-
     $parameterValue = $_GET['value'];
+
     $config = json_decode(file_get_contents('config.json'), true);
-    $filePath = $config['value_file_path'];
+    $controlScriptPath = $config['control_script_path'];
 
-    $fileHandle = fopen($filePath, 'w') or die("Unable to open file!");
-    fwrite($fileHandle, $parameterValue . "\n");
-    fclose($fileHandle);
+    // Construct the shell command
+    $command = '/usr/bin/python3 ' . $controlScriptPath . ' --set_temperature ' . escapeshellarg($parameterValue);
 
-    // timestamp
-    exec('sh -c "printf \'[%s] \' \"$(date \'+%Y-%m-%d %H:%M:%S\')\" >> /tmp/control.log"');
+    // Execute the command in the background
+    exec('sh -c "' . $command . ' >> /tmp/control.log 2>&1 &"');
 
-    // python call
-    $controlScript = $config['control_script_path'];
-    exec('sh -c "/usr/bin/python3 ' . $controlScript . ' >> /tmp/control.log 2>&1 &"');
-
+    echo "Request to set temperature to " . $parameterValue . " received.";
 } else {
     echo "unclear value for key.";
 }

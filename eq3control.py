@@ -12,6 +12,8 @@ from datetime import datetime, timedelta
 from functools import wraps
 import traceback
 from pathlib import Path
+import argparse
+import json
 
 import eq3bt
 from eq3bt import Mode
@@ -34,23 +36,17 @@ def escape(text):
 
 #%% SETTINGS
 
-import json
 
 pwd = os.path.dirname(__file__)
 config_file = Path(f'{pwd}/config.json')
 with open(config_file) as f:
     config = json.load(f)
-value_file = Path(config['value_file_path'])
-status_file = Path(f'{pwd}/status.txt')
-
-if not status_file.exists():
-    status_file.write_text('NONE')
 
 #%% CODE
 
 def log(msg):
     datestr = datetime.now().strftime('%y-%m-%d %H:%M:%S')
-    with open(f'{pwd}/control.log', 'a') as f:
+    with open(f'{pwd}/eq3control.log', 'a') as f:
         writestr = f'\n[{datestr}] {msg}'
         f.write(writestr)
 
@@ -69,39 +65,17 @@ def forward_exception(func):
             raise e
     return wrapped
 
-@forward_exception
-def set_thermostat(value):
-    thermostat = eq3bt.Thermostat(config['thermostat_mac_address'], connection_cls=BTLEConnection)
 
-    # for safety, strip
-    value = value.strip()
+@forward_exception
+def connect_thermostat():
+    thermostat = eq3bt.Thermostat(config['thermostat_mac_address'],
+                                  connection_cls=BTLEConnection)
 
     retries = 3
     last_exception = None
     for attempt in range(retries):
         try:
             thermostat.update()
-
-            if value=='away':
-                # I'm away and wifi is not connected: turn off heating and set manual
-                end_date = datetime.now() + timedelta(weeks=12)
-                thermostat.set_away(end_date, thermostat.eco_temperature)
-                requested = f'away=> {thermostat.eco_temperature}'
-            elif value=='home':
-                # I'm home but wifi is not connected: turn on heating but manual
-                thermostat.set_mode(Mode.Auto)
-                requested = f'home=> {thermostat.comfort_temperature}'
-            elif value.replace('.', '', 1).isdigit():
-                value_float = round(float(value)*2)/2
-                thermostat.target_temperature = value_float
-                requested = f'manual => value={value_float}'
-            else:
-                requested = f'ERROR, value={value}, unknown'
-
-            telegram_send.send(messages=[escape(f'{str(thermostat)} // requested={requested}')])
-            log(f'{str(thermostat)} // requested={requested}')
-            return # Success
-
         except eq3bt.BackendException as e:
             last_exception = e
             log(f"Bluetooth command failed on attempt {attempt + 1}/{retries}: {e}")
@@ -120,18 +94,54 @@ def set_thermostat(value):
     if last_exception:
         raise last_exception
 
-#%%
-@forward_exception
-def main():
-    prev_value = status_file.read_text().strip()
-    value = value_file.read_text().strip()
+    return thermostat
 
-    #if value==prev_value:
-     #   # nothing happened. stay put.
-      #  log(f'{value=}, no change')
-    #else:
-    set_thermostat(value)
-    status_file.write_text(value)
+
+@forward_exception
+def set_thermostat(thermostat, value):
+
+    # for safety, strip
+    value = value.strip()
+
+    if value=='away':
+        # I'm away and wifi is not connected: turn off heating and set manual
+        end_date = datetime.now() + timedelta(weeks=12)
+        thermostat.set_away(end_date, thermostat.eco_temperature)
+        requested = f'away=> {thermostat.eco_temperature}'
+    elif value=='home':
+        # I'm home but wifi is not connected: turn on heating but manual
+        thermostat.set_mode(Mode.Auto)
+        requested = f'home=> {thermostat.comfort_temperature}'
+    else:
+        try:
+            value_float = round(float(value)*2)/2
+            thermostat.target_temperature = value_float
+            requested = f'manual => value={value_float}'
+        except ValueError:
+            requested = f'ERROR, value={value}, unknown'
+
+
+    telegram_send.send(messages=[escape(f'{str(thermostat)} // requested={requested}')])
+    log(f'{str(thermostat)} // requested={requested}')
+    return # Success
+
+
 
 if __name__=='__main__':
-    main()
+    parser = argparse.ArgumentParser(description='Control EQ3 Bluetooth thermostat.')
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--get_temperature', action='store_true', help='Get current thermostat status (default).')
+    group.add_argument('--set_temperature', type=float, help='Set target temperature.')
+
+    args = parser.parse_args()
+
+    thermostat = connect_thermostat()
+
+    if args.get_temperature is not None:
+        print(thermostat.target_temperature)
+
+    if args.set_temperature is not None:
+        set_thermostat(str(args.set_temperature))
+
+    if args.set_temperature is None and args.get_temperature is None:
+        print(thermostat)
