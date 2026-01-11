@@ -143,5 +143,5 @@ if __name__=='__main__':
     if args.set_temperature is not None:
         set_thermostat(str(args.set_temperature))
 
-    if args.set_temperature is None and args.get_temperature is None:
-        print(thermostat)
+    if args.set_temperature is None and not args.get_temperature:
+        print(str(thermostat))
