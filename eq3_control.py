@@ -46,7 +46,7 @@ with open(config_file) as f:
 
 def log(msg):
     datestr = datetime.now().strftime('%y-%m-%d %H:%M:%S')
-    with open(f'{pwd}/eq3control.log', 'a') as f:
+    with open(f'{pwd}/eq3_control.log', 'a') as f:
         writestr = f'\n[{datestr}] {msg}'
         f.write(writestr)
 
