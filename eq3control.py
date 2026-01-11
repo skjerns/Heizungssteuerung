@@ -144,4 +144,5 @@ if __name__=='__main__':
         set_thermostat(thermostat, str(args.set_temperature))
 
     if args.set_temperature is None and not args.get_temperature:
-        print(str(thermostat))
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
+        print(timestamp, thermostat.target_temperature)
