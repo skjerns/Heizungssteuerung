@@ -79,6 +79,7 @@
       background: var(--bad-bg);
       border-color: var(--bad-br);
     }
+
     /* thermostat.php fetch status (left box only) */
     .temp-box.sync-ok{
       box-shadow: 0 0 0 1px rgba(90,255,160,.18), 0 0 22px rgba(90,255,160,.08) inset;
@@ -88,6 +89,23 @@
     }
     .temp-box.manual{
       box-shadow:none;
+    }
+
+    /* setpoint send feedback (left box) */
+    .temp-box.pending{
+      background: var(--warn-bg);
+      border-color: var(--warn-br);
+      box-shadow: 0 0 0 1px rgba(255,190,80,.18), 0 0 22px rgba(255,190,80,.08) inset;
+    }
+    .temp-box.applied-ok{
+      background: var(--ok-bg);
+      border-color: var(--ok-br);
+      box-shadow: 0 0 0 1px rgba(90,255,160,.18), 0 0 22px rgba(90,255,160,.08) inset;
+    }
+    .temp-box.applied-fail{
+      background: var(--bad-bg);
+      border-color: var(--bad-br);
+      box-shadow: 0 0 0 1px rgba(255,110,110,.14);
     }
 
     .temp-label{
@@ -169,7 +187,7 @@
   <div class="card">
     <div class="top">
       <div class="title">Radiator</div>
-      <div class="status" id="status">loading&</div>
+      <div class="status" id="status">loading…</div>
     </div>
 
     <!-- LEFT = setpoint (thermostat), RIGHT = measured room -->
@@ -219,7 +237,6 @@
           <circle class="knobInner" cx="0" cy="0" r="6"></circle>
         </g>
 
-        <!-- removed center value text; only hint remains -->
         <g>
           <text x="180" y="170" text-anchor="middle" class="hintText">drag</text>
         </g>
@@ -227,7 +244,7 @@
     </div>
 
     <div class="bottom">
-      <div class="range" id="range"></div>
+      <div class="range" id="range"></div>
       <div class="net" id="net">idle</div>
     </div>
   </div>
@@ -277,6 +294,9 @@ const state = {
   manualOverride: false,   // once user changes the wheel, fetched values stop updating left box
   sendTimer: null,
   lastSent: null,
+
+  pollSeq: 0,
+  feedbackTimer: null,
 };
 
 const ARC_START = CFG.ARC_CENTER_DEG - CFG.ARC_SPAN_DEG / 2;
@@ -285,7 +305,7 @@ const ARC_END   = CFG.ARC_CENTER_DEG + CFG.ARC_SPAN_DEG / 2;
 init();
 
 function init() {
-  el.range.textContent = `${CFG.MIN_TEMP.toFixed(1)}°C  ${CFG.MAX_TEMP.toFixed(1)}°C`;
+  el.range.textContent = `${CFG.MIN_TEMP.toFixed(1)}°C – ${CFG.MAX_TEMP.toFixed(1)}°C`;
 
   el.track.setAttribute('d', arcPath(CFG.CX, CFG.CY, CFG.R, ARC_START, ARC_END));
   buildTicks();
@@ -303,29 +323,47 @@ function initPolling() {
   setInterval(updateAll, CFG.STATUS_REFRESH_MS);
 }
 
+function setSetBoxFeedback(kind) {
+  // kind: 'pending' | 'ok' | 'fail' | 'clear'
+  el.setTempBox.classList.remove('pending','applied-ok','applied-fail');
+
+  if (state.feedbackTimer) clearTimeout(state.feedbackTimer);
+  state.feedbackTimer = null;
+
+  if (kind === 'pending') {
+    el.setTempBox.classList.add('pending');
+    return;
+  }
+  if (kind === 'ok') {
+    el.setTempBox.classList.add('applied-ok');
+    state.feedbackTimer = setTimeout(() => setSetBoxFeedback('clear'), 1500);
+    return;
+  }
+  if (kind === 'fail') {
+    el.setTempBox.classList.add('applied-fail');
+    state.feedbackTimer = setTimeout(() => setSetBoxFeedback('clear'), 2000);
+    return;
+  }
+}
+
 async function updateAll() {
-  el.status.textContent = 'loading&';
+  const seq = ++state.pollSeq;
+  el.status.textContent = 'loading…';
 
-  const [statusRes, thermoRes] = await Promise.allSettled([
-    fetchJson(CFG.STATUS_URL, CFG.FETCH_TIMEOUT_MS),
-    fetchThermostatValue(`${CFG.THERMOSTAT_URL}?get`, CFG.FETCH_TIMEOUT_MS),
-  ]);
+  // Start thermostat fetch now, but do not block UI on it
+  const thermoPromise = fetchThermostatValue(`${CFG.THERMOSTAT_URL}?get`, CFG.FETCH_TIMEOUT_MS)
+    .then(v => ({ ok: true, v }))
+    .catch(err => ({ ok: false, err }));
 
-  // defaults if something fails
+  // status.php first -> update what we can immediately
   let statusData = null;
-  let thermoVal = null;
-  let thermoOk = false;
-
-  if (statusRes.status === 'fulfilled') {
-    statusData = statusRes.value || null;
+  try {
+    statusData = await fetchJson(CFG.STATUS_URL, CFG.FETCH_TIMEOUT_MS);
+  } catch {
+    statusData = null;
   }
 
-  if (thermoRes.status === 'fulfilled' && Number.isFinite(thermoRes.value)) {
-    thermoVal = thermoRes.value;
-    thermoOk = true;
-  }
-
-  // update room (always from status.php)
+  // Room (always from status.php)
   if (statusData && statusData.room_temp) {
     const parsed = parseStampedTemp(statusData.room_temp);
     if (parsed) {
@@ -340,50 +378,53 @@ async function updateAll() {
     el.roomTempValue.textContent = '--.-°C';
   }
 
-  // left box + wheel: only if user has not overridden
+  // Left box fallback immediately from status.php eq3_temp (unless manualOverride)
   if (!state.manualOverride) {
-    // base staleness from status.php eq3_temp (requirement #2)
     let eq3Parsed = null;
     if (statusData && statusData.eq3_temp) eq3Parsed = parseStampedTemp(statusData.eq3_temp);
 
     if (eq3Parsed) {
       applyFreshness(el.setTempBox, eq3Parsed.ageMin);
+      el.setTempValue.textContent = `${eq3Parsed.temp.toFixed(1)}°C`;
+      if (!state.dragging) setValue(clampSnap(eq3Parsed.temp), true);
     } else {
       markBad(el.setTempBox);
+      el.setTempValue.textContent = '--.-°C';
     }
 
-    // requirement #3: concurrently call thermostat.php; if fetch worked make it green
+    // reset sync marker; thermostat.php will update later
     el.setTempBox.classList.remove('sync-ok', 'sync-fail');
-    el.setSyncDot.classList.remove('ok', 'bad', 'off');
-
-    if (thermoOk) {
-      // force green when thermostat fetch works
-      el.setTempBox.classList.remove('warn', 'stale');
-      el.setTempBox.classList.add('fresh', 'sync-ok');
-      el.setSyncDot.classList.add('ok');
-
-      el.setTempValue.textContent = `${thermoVal.toFixed(1)}°C`;
-
-      // requirement #5: if left value fetched, also set the wheel to that value
-      if (!state.dragging) setValue(clampSnap(thermoVal), true);
-    } else {
-      el.setTempBox.classList.add('sync-fail');
-      el.setSyncDot.classList.add('bad');
-
-      // fallback display to status.php value if available
-      if (eq3Parsed) {
-        el.setTempValue.textContent = `${eq3Parsed.temp.toFixed(1)}°C`;
-        if (!state.dragging) setValue(clampSnap(eq3Parsed.temp), true);
-      } else {
-        el.setTempValue.textContent = '--.-°C';
-      }
-    }
+    el.setSyncDot.classList.remove('ok', 'bad');
+    el.setSyncDot.classList.add('off');
   } else {
-    // manual mode: keep left box driven by wheel only
     el.setTempBox.classList.add('manual');
   }
 
   el.status.textContent = (statusData ? 'ready' : 'status failed');
+
+  // When thermostat.php finishes -> update only left box (if still current and not manualOverride)
+  const thermoRes = await thermoPromise;
+  if (seq !== state.pollSeq) return;            // ignore stale async completion
+  if (state.manualOverride) return;
+
+  el.setTempBox.classList.remove('sync-ok', 'sync-fail');
+  el.setSyncDot.classList.remove('ok', 'bad', 'off');
+
+  if (thermoRes.ok && Number.isFinite(thermoRes.v)) {
+    el.setTempBox.classList.add('sync-ok');
+    el.setSyncDot.classList.add('ok');
+
+    // force green when thermostat fetch works
+    el.setTempBox.classList.remove('warn', 'stale');
+    el.setTempBox.classList.add('fresh');
+
+    el.setTempValue.textContent = `${thermoRes.v.toFixed(1)}°C`;
+    if (!state.dragging) setValue(clampSnap(thermoRes.v), true);
+  } else {
+    el.setTempBox.classList.add('sync-fail');
+    el.setSyncDot.classList.add('bad');
+    // keep whatever fallback value/status.php already rendered
+  }
 }
 
 function markBad(boxEl) {
@@ -426,7 +467,6 @@ function parseStampedTemp(s) {
 
 function parseDateTimeLocal(dt) {
   // expects "YYYY-MM-DD HH:MM" (optionally seconds)
-  // convert to ISO-ish local time: "YYYY-MM-DDTHH:MM[:SS]"
   const iso = dt.replace(' ', 'T');
   const d = new Date(iso);
   const t = d.getTime();
@@ -528,7 +568,6 @@ function applyPointer(e) {
 function setValue(v, silent) {
   const next = clampSnap(v);
 
-  // requirement #5: once user changes the wheel, fetched values stop updating the left box
   if (!silent && next !== state.value) {
     state.manualOverride = true;
     el.setTempBox.classList.add('manual');
@@ -542,10 +581,10 @@ function setValue(v, silent) {
 
   el.active.setAttribute('d', arcPath(CFG.CX, CFG.CY, CFG.R, ARC_START, a));
 
-  // requirement #4 + #5: no center value; left box shows set value and is driven by the wheel
+  // left box always shows the wheel value
   el.setTempValue.textContent = `${state.value.toFixed(1)}°C`;
 
-  if (!silent) el.status.textContent = 'set&';
+  if (!silent) el.status.textContent = 'set…';
 }
 
 function scheduleSend() {
@@ -566,19 +605,24 @@ function sendToThermostat(v) {
     return;
   }
 
-  const url = `${CFG.THERMOSTAT_URL}?set=${encodeURIComponent(valueStr)}}`;
-  el.net.textContent = 'sending&';
+  const url = `${CFG.THERMOSTAT_URL}?set=${encodeURIComponent(valueStr)}`;
+  el.net.textContent = 'sending…';
+
+  // visual feedback on left field
+  setSetBoxFeedback('pending');
 
   const img = new Image();
   img.onload = () => {
     state.lastSent = valueStr;
     el.net.textContent = 'sent';
     el.status.textContent = 'ready';
+    setSetBoxFeedback('ok');
   };
   img.onerror = () => {
     state.lastSent = valueStr;
     el.net.textContent = 'sent?';
     el.status.textContent = 'ready';
+    setSetBoxFeedback('fail');
   };
   img.src = url;
 }
