@@ -308,7 +308,7 @@ async function updateAll() {
 
   const [statusRes, thermoRes] = await Promise.allSettled([
     fetchJson(CFG.STATUS_URL, CFG.FETCH_TIMEOUT_MS),
-    fetchThermostatValue(CFG.THERMOSTAT_URL, CFG.FETCH_TIMEOUT_MS),
+    fetchThermostatValue(`${CFG.THERMOSTAT_URL}?get`, CFG.FETCH_TIMEOUT_MS),
   ]);
 
   // defaults if something fails
@@ -566,7 +566,7 @@ function sendToThermostat(v) {
     return;
   }
 
-  const url = `${CFG.THERMOSTAT_URL}?value=${encodeURIComponent(valueStr)}&t=${Date.now()}`;
+  const url = `${CFG.THERMOSTAT_URL}?set=${encodeURIComponent(valueStr)}}`;
   el.net.textContent = 'sending&';
 
   const img = new Image();
