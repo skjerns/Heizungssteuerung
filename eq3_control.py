@@ -123,6 +123,11 @@ def set_thermostat(thermostat, value):
 
     telegram_send.send(messages=[escape(f'{str(thermostat)} // requested={requested}')])
     log(f'{str(thermostat)} // requested={requested}')
+    
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
+    with open(config['eq3_temperature_csv'], 'a') as f:
+        f.write(f'{timestamp}, {value}\n')
+        
     return # Success
 
 

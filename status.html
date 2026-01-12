@@ -129,6 +129,17 @@
     .dot.bad{ background: rgba(255,110,110,.85); }
     .dot.off{ background: rgba(255,255,255,.20); }
 
+    /* spinner while thermostat.php?get is pending */
+    .dot.spin{
+      width:12px;height:12px;
+      background: transparent;
+      border:2px solid rgba(255,255,255,.25);
+      border-top-color: rgba(255,255,255,.78);
+      border-radius:50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
     .temp-value{
       font-size: 22px;
       font-weight: 600;
@@ -190,7 +201,6 @@
       <div class="status" id="status">loading…</div>
     </div>
 
-    <!-- LEFT = setpoint (thermostat), RIGHT = measured room -->
     <div class="temp-boxes">
       <div id="set-temp-box" class="temp-box">
         <div class="temp-label">
@@ -267,7 +277,6 @@ const CFG = {
 
   SEND_DELAY_MS: 1000,
   FETCH_TIMEOUT_MS: 5000,
-  STATUS_REFRESH_MS: 30000,
 };
 
 const el = {
@@ -291,7 +300,7 @@ const el = {
 const state = {
   value: 20.0,
   dragging: false,
-  manualOverride: false,   // once user changes the wheel, fetched values stop updating left box
+  manualOverride: false,
   sendTimer: null,
   lastSent: null,
 
@@ -315,12 +324,17 @@ function init() {
   bindPointer();
   bindKeyboard();
 
-  initPolling();
+  // single load only; no reload interval
+  updateAll();
 }
 
-function initPolling() {
-  updateAll();
-  setInterval(updateAll, CFG.STATUS_REFRESH_MS);
+function setSyncDot(mode) {
+  // mode: 'loading' | 'ok' | 'bad' | 'off'
+  el.setSyncDot.classList.remove('ok','bad','off','spin');
+  if (mode === 'loading') { el.setSyncDot.classList.add('spin'); return; }
+  if (mode === 'ok') { el.setSyncDot.classList.add('ok'); return; }
+  if (mode === 'bad') { el.setSyncDot.classList.add('bad'); return; }
+  el.setSyncDot.classList.add('off');
 }
 
 function setSetBoxFeedback(kind) {
@@ -350,10 +364,19 @@ async function updateAll() {
   const seq = ++state.pollSeq;
   el.status.textContent = 'loading…';
 
-  // Start thermostat fetch now, but do not block UI on it
-  const thermoPromise = fetchThermostatValue(`${CFG.THERMOSTAT_URL}?get`, CFG.FETCH_TIMEOUT_MS)
-    .then(v => ({ ok: true, v }))
-    .catch(err => ({ ok: false, err }));
+  // If user has overridden, do not fetch thermostat.php?get anymore.
+  const shouldFetchThermo = !state.manualOverride;
+
+  let thermoPromise = Promise.resolve({ ok: false, skipped: true });
+  if (shouldFetchThermo) {
+    setSyncDot('loading');
+    el.setTempBox.classList.remove('sync-ok', 'sync-fail');
+    thermoPromise = fetchThermostatValue(`${CFG.THERMOSTAT_URL}?get`, CFG.FETCH_TIMEOUT_MS)
+      .then(v => ({ ok: true, v }))
+      .catch(err => ({ ok: false, err }));
+  } else {
+    setSyncDot('off');
+  }
 
   // status.php first -> update what we can immediately
   let statusData = null;
@@ -391,11 +414,6 @@ async function updateAll() {
       markBad(el.setTempBox);
       el.setTempValue.textContent = '--.-°C';
     }
-
-    // reset sync marker; thermostat.php will update later
-    el.setTempBox.classList.remove('sync-ok', 'sync-fail');
-    el.setSyncDot.classList.remove('ok', 'bad');
-    el.setSyncDot.classList.add('off');
   } else {
     el.setTempBox.classList.add('manual');
   }
@@ -404,15 +422,15 @@ async function updateAll() {
 
   // When thermostat.php finishes -> update only left box (if still current and not manualOverride)
   const thermoRes = await thermoPromise;
-  if (seq !== state.pollSeq) return;            // ignore stale async completion
+  if (seq !== state.pollSeq) return;
   if (state.manualOverride) return;
+  if (thermoRes.skipped) return;
 
   el.setTempBox.classList.remove('sync-ok', 'sync-fail');
-  el.setSyncDot.classList.remove('ok', 'bad', 'off');
 
   if (thermoRes.ok && Number.isFinite(thermoRes.v)) {
+    setSyncDot('ok');
     el.setTempBox.classList.add('sync-ok');
-    el.setSyncDot.classList.add('ok');
 
     // force green when thermostat fetch works
     el.setTempBox.classList.remove('warn', 'stale');
@@ -421,9 +439,9 @@ async function updateAll() {
     el.setTempValue.textContent = `${thermoRes.v.toFixed(1)}°C`;
     if (!state.dragging) setValue(clampSnap(thermoRes.v), true);
   } else {
+    setSyncDot('bad');
     el.setTempBox.classList.add('sync-fail');
-    el.setSyncDot.classList.add('bad');
-    // keep whatever fallback value/status.php already rendered
+    // keep fallback from status.php already rendered
   }
 }
 
@@ -466,7 +484,6 @@ function parseStampedTemp(s) {
 }
 
 function parseDateTimeLocal(dt) {
-  // expects "YYYY-MM-DD HH:MM" (optionally seconds)
   const iso = dt.replace(' ', 'T');
   const d = new Date(iso);
   const t = d.getTime();
@@ -571,6 +588,7 @@ function setValue(v, silent) {
   if (!silent && next !== state.value) {
     state.manualOverride = true;
     el.setTempBox.classList.add('manual');
+    setSyncDot('off');
   }
 
   state.value = next;
@@ -581,7 +599,6 @@ function setValue(v, silent) {
 
   el.active.setAttribute('d', arcPath(CFG.CX, CFG.CY, CFG.R, ARC_START, a));
 
-  // left box always shows the wheel value
   el.setTempValue.textContent = `${state.value.toFixed(1)}°C`;
 
   if (!silent) el.status.textContent = 'set…';
@@ -608,7 +625,6 @@ function sendToThermostat(v) {
   const url = `${CFG.THERMOSTAT_URL}?set=${encodeURIComponent(valueStr)}`;
   el.net.textContent = 'sending…';
 
-  // visual feedback on left field
   setSetBoxFeedback('pending');
 
   const img = new Image();
