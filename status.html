@@ -1,3 +1,4 @@
+<!-- index.html -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -34,7 +35,7 @@
       padding:22px;
     }
     .card{
-      width:min(520px, 94vw);
+      width:min(760px, 96vw);
       border-radius:22px;
       padding:18px 18px 14px;
       background:linear-gradient(180deg,var(--card0),var(--card1));
@@ -51,11 +52,40 @@
     .title{font-size:15px; letter-spacing:.3px}
     .status{font-size:13px;color:var(--muted)}
 
+    .tabs{
+      display:flex;
+      gap:8px;
+      padding:6px 4px 12px;
+    }
+    .tabbtn{
+      appearance:none;
+      border:1px solid rgba(255,255,255,.12);
+      background:rgba(255,255,255,.06);
+      color:rgba(255,255,255,.82);
+      border-radius:999px;
+      padding:8px 12px;
+      font-size:12px;
+      letter-spacing:.2px;
+      cursor:pointer;
+      user-select:none;
+      transition: background .15s, border-color .15s, transform .05s;
+    }
+    .tabbtn:active{ transform: translateY(1px); }
+    .tabbtn.active{
+      background:rgba(255,255,255,.12);
+      border-color:rgba(255,255,255,.22);
+      color:rgba(255,255,255,.95);
+    }
+
+    .view{ display:none; }
+    .view.active{ display:block; }
+
+    /* CONTROL VIEW */
     .temp-boxes{
       display:flex;
       justify-content:space-around;
       gap:16px;
-      padding:16px 0 22px;
+      padding:6px 0 18px;
     }
     .temp-box{
       background: var(--card1);
@@ -191,6 +221,40 @@
     }
     .range{font-size:12px;color:var(--muted2)}
     .net{font-size:12px;color:var(--muted2)}
+
+    /* GRAPH VIEW */
+    .graphWrap{
+      padding:6px 2px 2px;
+    }
+    .graphHead{
+      display:flex;
+      justify-content:space-between;
+      align-items:baseline;
+      gap:12px;
+      padding:0 4px 10px;
+    }
+    .graphTitle{
+      font-size:13px;
+      color:rgba(255,255,255,.86);
+      letter-spacing:.2px;
+    }
+    .graphHint{
+      font-size:12px;
+      color:var(--muted2);
+      white-space:nowrap;
+    }
+    .canvasWrap{
+      background: rgba(0,0,0,.14);
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: 14px;
+      padding: 10px;
+      overflow:hidden;
+    }
+    #tempChart{
+      width:100%;
+      height:320px;
+      display:block;
+    }
   </style>
 </head>
 
@@ -198,66 +262,94 @@
   <div class="card">
     <div class="top">
       <div class="title">Radiator</div>
-      <div class="status" id="status">loading…</div>
+      <div class="status" id="status">idle</div>
     </div>
 
-    <div class="temp-boxes">
-      <div id="set-temp-box" class="temp-box">
-        <div class="temp-label">
-          <span class="dot off" id="set-sync-dot" aria-hidden="true"></span>
-          <span>Set</span>
+    <div class="tabs" role="tablist" aria-label="Views">
+      <button class="tabbtn active" id="tabControl" role="tab" aria-selected="true">Control</button>
+      <button class="tabbtn" id="tabGraph" role="tab" aria-selected="false">Graph</button>
+    </div>
+
+    <!-- CONTROL VIEW -->
+    <div class="view active" id="viewControl" role="tabpanel" aria-labelledby="tabControl">
+      <div class="temp-boxes">
+        <div id="set-temp-box" class="temp-box">
+          <div class="temp-label">
+            <span class="dot off" id="set-sync-dot" aria-hidden="true"></span>
+            <span>Set</span>
+          </div>
+          <div id="set-temp-value" class="temp-value">--.-°C</div>
         </div>
-        <div id="set-temp-value" class="temp-value">--.-°C</div>
+
+        <div id="room-temp-box" class="temp-box">
+          <div class="temp-label">Room</div>
+          <div id="room-temp-value" class="temp-value">--.-°C</div>
+        </div>
       </div>
 
-      <div id="room-temp-box" class="temp-box">
-        <div class="temp-label">Room</div>
-        <div id="room-temp-value" class="temp-value">--.-°C</div>
+      <div class="dialWrap">
+        <svg id="dial" viewBox="0 0 360 240" aria-label="Temperature control">
+          <defs>
+            <linearGradient id="activeGrad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#67d4ff"/>
+              <stop offset="100%" stop-color="#8affc1"/>
+            </linearGradient>
+
+            <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="2.5" result="b"/>
+              <feMerge>
+                <feMergeNode in="b"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+
+            <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+              <feDropShadow dx="0" dy="10" stdDeviation="10" flood-opacity=".35"/>
+            </filter>
+          </defs>
+
+          <path id="track" class="track" d=""></path>
+          <path id="active" class="active" d=""></path>
+
+          <g id="ticks"></g>
+
+          <g id="knob" class="knob" filter="url(#shadow)" tabindex="0" aria-label="Temperature knob">
+            <circle class="knobOuter" cx="0" cy="0" r="14"></circle>
+            <circle class="knobInner" cx="0" cy="0" r="6"></circle>
+          </g>
+
+          <g>
+            <text x="180" y="170" text-anchor="middle" class="hintText">drag</text>
+          </g>
+        </svg>
+      </div>
+
+      <div class="bottom">
+        <div class="range" id="range"></div>
+        <div class="net" id="net">idle</div>
       </div>
     </div>
 
-    <div class="dialWrap">
-      <svg id="dial" viewBox="0 0 360 240" aria-label="Temperature control">
-        <defs>
-          <linearGradient id="activeGrad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stop-color="#67d4ff"/>
-            <stop offset="100%" stop-color="#8affc1"/>
-          </linearGradient>
-
-          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="2.5" result="b"/>
-            <feMerge>
-              <feMergeNode in="b"/>
-              <feMergeNode in="SourceGraphic"/>
-            </feMerge>
-          </filter>
-
-          <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-            <feDropShadow dx="0" dy="10" stdDeviation="10" flood-opacity=".35"/>
-          </filter>
-        </defs>
-
-        <path id="track" class="track" d=""></path>
-        <path id="active" class="active" d=""></path>
-
-        <g id="ticks"></g>
-
-        <g id="knob" class="knob" filter="url(#shadow)" tabindex="0" aria-label="Temperature knob">
-          <circle class="knobOuter" cx="0" cy="0" r="14"></circle>
-          <circle class="knobInner" cx="0" cy="0" r="6"></circle>
-        </g>
-
-        <g>
-          <text x="180" y="170" text-anchor="middle" class="hintText">drag</text>
-        </g>
-      </svg>
-    </div>
-
-    <div class="bottom">
-      <div class="range" id="range"></div>
-      <div class="net" id="net">idle</div>
+    <!-- GRAPH VIEW -->
+    <div class="view" id="viewGraph" role="tabpanel" aria-labelledby="tabGraph">
+      <div class="graphWrap">
+        <div class="graphHead">
+          <div class="graphTitle">Temperature history</div>
+          <div class="graphHint">drag to pan · wheel/pinch to zoom</div>
+        </div>
+        <div class="canvasWrap">
+          <canvas id="tempChart"></canvas>
+        </div>
+      </div>
     </div>
   </div>
+
+  <!-- Chart.js + pan/zoom plugin -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js" defer></script>
+
+  <!-- graph view code -->
+  <script src="./graph.js" defer></script>
 
 <script>
 const CFG = {
@@ -280,6 +372,11 @@ const CFG = {
 };
 
 const el = {
+  tabControl: document.getElementById('tabControl'),
+  tabGraph: document.getElementById('tabGraph'),
+  viewControl: document.getElementById('viewControl'),
+  viewGraph: document.getElementById('viewGraph'),
+
   dial: document.getElementById('dial'),
   track: document.getElementById('track'),
   active: document.getElementById('active'),
@@ -314,11 +411,11 @@ const ARC_END   = CFG.ARC_CENTER_DEG + CFG.ARC_SPAN_DEG / 2;
 init();
 
 function init() {
-  el.range.textContent = `${CFG.MIN_TEMP.toFixed(1)}°C – ${CFG.MAX_TEMP.toFixed(1)}°C`;
+  bindTabs();
 
+  el.range.textContent = `${CFG.MIN_TEMP.toFixed(1)}°C  ${CFG.MAX_TEMP.toFixed(1)}°C`;
   el.track.setAttribute('d', arcPath(CFG.CX, CFG.CY, CFG.R, ARC_START, ARC_END));
   buildTicks();
-
   setValue(clampSnap(20.0), true);
 
   bindPointer();
@@ -326,6 +423,27 @@ function init() {
 
   // single load only; no reload interval
   updateAll();
+}
+
+function bindTabs() {
+  const show = (which) => {
+    const isControl = which === 'control';
+
+    el.tabControl.classList.toggle('active', isControl);
+    el.tabGraph.classList.toggle('active', !isControl);
+    el.tabControl.setAttribute('aria-selected', isControl ? 'true' : 'false');
+    el.tabGraph.setAttribute('aria-selected', !isControl ? 'true' : 'false');
+
+    el.viewControl.classList.toggle('active', isControl);
+    el.viewGraph.classList.toggle('active', !isControl);
+
+    if (!isControl && window.GraphView && typeof window.GraphView.ensureLoaded === 'function') {
+      window.GraphView.ensureLoaded();
+    }
+  };
+
+  el.tabControl.addEventListener('click', () => show('control'));
+  el.tabGraph.addEventListener('click', () => show('graph'));
 }
 
 function setSyncDot(mode) {
@@ -362,9 +480,8 @@ function setSetBoxFeedback(kind) {
 
 async function updateAll() {
   const seq = ++state.pollSeq;
-  el.status.textContent = 'loading…';
+  el.status.textContent = 'loading&';
 
-  // If user has overridden, do not fetch thermostat.php?get anymore.
   const shouldFetchThermo = !state.manualOverride;
 
   let thermoPromise = Promise.resolve({ ok: false, skipped: true });
@@ -378,7 +495,6 @@ async function updateAll() {
     setSyncDot('off');
   }
 
-  // status.php first -> update what we can immediately
   let statusData = null;
   try {
     statusData = await fetchJson(CFG.STATUS_URL, CFG.FETCH_TIMEOUT_MS);
@@ -386,7 +502,6 @@ async function updateAll() {
     statusData = null;
   }
 
-  // Room (always from status.php)
   if (statusData && statusData.room_temp) {
     const parsed = parseStampedTemp(statusData.room_temp);
     if (parsed) {
@@ -401,7 +516,6 @@ async function updateAll() {
     el.roomTempValue.textContent = '--.-°C';
   }
 
-  // Left box fallback immediately from status.php eq3_temp (unless manualOverride)
   if (!state.manualOverride) {
     let eq3Parsed = null;
     if (statusData && statusData.eq3_temp) eq3Parsed = parseStampedTemp(statusData.eq3_temp);
@@ -420,7 +534,6 @@ async function updateAll() {
 
   el.status.textContent = (statusData ? 'ready' : 'status failed');
 
-  // When thermostat.php finishes -> update only left box (if still current and not manualOverride)
   const thermoRes = await thermoPromise;
   if (seq !== state.pollSeq) return;
   if (state.manualOverride) return;
@@ -432,7 +545,6 @@ async function updateAll() {
     setSyncDot('ok');
     el.setTempBox.classList.add('sync-ok');
 
-    // force green when thermostat fetch works
     el.setTempBox.classList.remove('warn', 'stale');
     el.setTempBox.classList.add('fresh');
 
@@ -441,7 +553,6 @@ async function updateAll() {
   } else {
     setSyncDot('bad');
     el.setTempBox.classList.add('sync-fail');
-    // keep fallback from status.php already rendered
   }
 }
 
@@ -600,8 +711,7 @@ function setValue(v, silent) {
   el.active.setAttribute('d', arcPath(CFG.CX, CFG.CY, CFG.R, ARC_START, a));
 
   el.setTempValue.textContent = `${state.value.toFixed(1)}°C`;
-
-  if (!silent) el.status.textContent = 'set…';
+  if (!silent) el.status.textContent = 'set&';
 }
 
 function scheduleSend() {
@@ -623,8 +733,7 @@ function sendToThermostat(v) {
   }
 
   const url = `${CFG.THERMOSTAT_URL}?set=${encodeURIComponent(valueStr)}`;
-  el.net.textContent = 'sending…';
-
+  el.net.textContent = 'sending&';
   setSetBoxFeedback('pending');
 
   const img = new Image();
