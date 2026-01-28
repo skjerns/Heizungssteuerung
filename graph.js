@@ -1,11 +1,12 @@
 // graph.js
 (() => {
+  const VERSION = 'v1.1.0'; // Version with dynamic range 17-23°C, red-to-green, tooltip support
   const STATUS_URL = './status.php';
 
   // Heatmap config
   const HEATMAP_BIN_MIN = 30;           // columns per day = 24h / bin
-  const HEATMAP_MIN_C = 10;             // fixed range (cold)
-  const HEATMAP_MAX_C = 30;             // fixed range (hot)
+  const HEATMAP_MIN_C = 17;             // fixed range (cold)
+  const HEATMAP_MAX_C = 23;             // fixed range (hot)
 
   const MS_MIN = 60 * 1000;
   const MS_HOUR = 60 * MS_MIN;
@@ -62,6 +63,10 @@
     heatCtx: null,
     dpr: 1,
     resizeObs: null,
+
+    // tooltip
+    tooltip: null,
+    heatmapLayout: null, // stores grid dimensions for hit detection
   };
 
   function parseStamped(s) {
@@ -176,6 +181,7 @@
     } else {
       el.wrap = document.createElement('div');
       el.wrap.className = 'tempChartWrap';
+      el.wrap.style.cssText = 'position: relative; width: 100%;';
       parent.insertBefore(el.wrap, el.canvas);
       el.wrap.appendChild(el.canvas);
     }
@@ -184,32 +190,52 @@
     if (!el.wrap.querySelector('.tempToolbar')) {
       const tb = document.createElement('div');
       tb.className = 'tempToolbar';
+      tb.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 8px;
+        margin-bottom: 8px;
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      `;
       tb.innerHTML = `
-        <div class="tempToolbarRow">
-          <div class="tempMode">
-            <button type="button" class="tempBtn tempBtnMode" data-mode="heatmap">heatmap</button>
-            <button type="button" class="tempBtn tempBtnMode" data-mode="graph">graph</button>
+        <div class="tempToolbarRow" style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+          <div class="tempMode" style="display: flex; gap: 6px; align-items: center;">
+            <button type="button" class="tempBtn tempBtnMode" data-mode="heatmap" style="padding: 6px 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: rgba(255,255,255,0.8); cursor: pointer; font-size: 12px;">heatmap</button>
+            <button type="button" class="tempBtn tempBtnMode" data-mode="graph" style="padding: 6px 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: rgba(255,255,255,0.8); cursor: pointer; font-size: 12px;">graph</button>
+            <span class="tempVersion" style="font-size: 10px; color: rgba(255,255,255,0.4); margin-left: 4px;">${VERSION}</span>
           </div>
-          <div class="tempMetricWrap">
-            <label class="tempMetricLabel">heatmap:</label>
-            <select class="tempMetricSelect">
+          <div class="tempMetricWrap" style="display: flex; align-items: center; gap: 6px;">
+            <label class="tempMetricLabel" style="font-size: 12px; color: rgba(255,255,255,0.7);">heatmap:</label>
+            <select class="tempMetricSelect" style="padding: 4px 8px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: rgba(255,255,255,0.9); font-size: 12px;">
               <option value="measured">measured</option>
               <option value="set">set</option>
             </select>
           </div>
         </div>
 
-        <div class="tempToolbarRow tempToolbarTitleRow">
-          <div class="tempTitle"></div>
+        <div class="tempToolbarRow tempToolbarTitleRow" style="text-align: center;">
+          <div class="tempTitle" style="font-size: 13px; color: rgba(255,255,255,0.85); font-weight: 500;"></div>
         </div>
 
-        <div class="tempToolbarRow tempToolbarNavRow">
-          <button type="button" class="tempBtn tempPrev">&lt;</button>
-          <button type="button" class="tempBtn tempReset"></button>
-          <button type="button" class="tempBtn tempNext">&gt;</button>
+        <div class="tempToolbarRow tempToolbarNavRow" style="display: flex; justify-content: center; gap: 8px;">
+          <button type="button" class="tempBtn tempPrev" style="padding: 6px 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: rgba(255,255,255,0.8); cursor: pointer; font-size: 14px; min-width: 36px;">&lt;</button>
+          <button type="button" class="tempBtn tempReset" style="padding: 6px 16px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: rgba(255,255,255,0.8); cursor: pointer; font-size: 12px;"></button>
+          <button type="button" class="tempBtn tempNext" style="padding: 6px 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: rgba(255,255,255,0.8); cursor: pointer; font-size: 14px; min-width: 36px;">&gt;</button>
         </div>
       `;
       el.wrap.insertBefore(tb, el.canvas);
+
+      // Add hover styles dynamically
+      const style = document.createElement('style');
+      style.textContent = `
+        .tempBtn:hover { background: rgba(255,255,255,0.15) !important; }
+        .tempBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .tempBtn.isActive { background: rgba(255,255,255,0.2) !important; border-color: rgba(255,255,255,0.3) !important; }
+      `;
+      document.head.appendChild(style);
     }
 
     el.toolbar = el.wrap.querySelector('.tempToolbar');
@@ -221,6 +247,26 @@
     el.btnNext = el.wrap.querySelector('.tempNext');
     el.metricWrap = el.wrap.querySelector('.tempMetricWrap');
     el.metricSelect = el.wrap.querySelector('.tempMetricSelect');
+
+    // Create tooltip if not exists
+    if (!state.tooltip) {
+      state.tooltip = document.createElement('div');
+      state.tooltip.className = 'tempTooltip';
+      state.tooltip.style.cssText = `
+        position: absolute;
+        background: rgba(0, 0, 0, 0.9);
+        color: rgba(255, 255, 255, 0.95);
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-size: 13px;
+        pointer-events: none;
+        display: none;
+        z-index: 1000;
+        white-space: nowrap;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      `;
+      el.wrap.appendChild(state.tooltip);
+    }
 
     // Wire once
     if (!el.toolbar._wired) {
@@ -280,8 +326,15 @@
     if (state.mode === 'heatmap') {
       destroyChart();
       ensureHeatmapCtx();
+      // Ensure canvas doesn't cause scrolling
+      el.canvas.style.display = 'block';
+      el.canvas.style.maxHeight = '320px';
       renderHeatmap();
     } else {
+      // Hide tooltip when switching to graph mode
+      if (state.tooltip) state.tooltip.style.display = 'none';
+      el.canvas.style.display = 'block';
+      el.canvas.style.maxHeight = '320px';
       renderGraphDay();
     }
 
@@ -335,6 +388,25 @@
       state.resizeObs.observe(el.canvas);
       state.resizeObs.observe(el.wrap);
     }
+
+    // Add mouse event listeners for tooltip
+    if (!el.canvas._heatmapEventsAttached) {
+      el.canvas._heatmapEventsAttached = true;
+
+      el.canvas.addEventListener('mousemove', (e) => {
+        if (state.mode !== 'heatmap' || !state.heatmapLayout) return;
+        showTooltipAtPosition(e);
+      });
+
+      el.canvas.addEventListener('click', (e) => {
+        if (state.mode !== 'heatmap' || !state.heatmapLayout) return;
+        showTooltipAtPosition(e);
+      });
+
+      el.canvas.addEventListener('mouseleave', () => {
+        if (state.tooltip) state.tooltip.style.display = 'none';
+      });
+    }
   }
 
   function setCanvasDpiSize() {
@@ -365,17 +437,15 @@
     return `rgb(${r},${g},${b})`;
   }
 
-  // cold blue -> yellow -> red
-  function heatColor(tempC) {
-    const t = (tempC - HEATMAP_MIN_C) / (HEATMAP_MAX_C - HEATMAP_MIN_C);
+  // cold red -> hot green
+  function heatColor(tempC, minC, maxC) {
+    const t = (tempC - minC) / (maxC - minC);
     const u = clamp(t, 0, 1);
 
-    const blue = [0, 90, 200];
-    const yellow = [255, 220, 0];
-    const red = [220, 30, 30];
+    const red = [220, 30, 30];      // cold (low temp)
+    const green = [30, 200, 80];    // hot (high temp)
 
-    if (u <= 0.5) return lerpRGB(blue, yellow, u / 0.5);
-    return lerpRGB(yellow, red, (u - 0.5) / 0.5);
+    return lerpRGB(red, green, u);
   }
 
   function pointsInRange(points, startMs, endMs) {
@@ -420,6 +490,77 @@
     return { grid, binsPerDay };
   }
 
+  function findGridMinMax(grid, defaultMin, defaultMax) {
+    let min = Infinity;
+    let max = -Infinity;
+    for (let r = 0; r < grid.length; r++) {
+      for (let c = 0; c < grid[r].length; c++) {
+        const v = grid[r][c];
+        if (Number.isFinite(v)) {
+          if (v < min) min = v;
+          if (v > max) max = v;
+        }
+      }
+    }
+    // If no data, use defaults
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {
+      return { min: defaultMin, max: defaultMax };
+    }
+    // Use defaults but extend if data goes beyond
+    const finalMin = Math.min(min, defaultMin);
+    const finalMax = Math.max(max, defaultMax);
+    return { min: finalMin, max: finalMax };
+  }
+
+  function showTooltipAtPosition(e) {
+    if (!state.heatmapLayout || !state.tooltip) return;
+
+    const rect = el.canvas.getBoundingClientRect();
+    const wrapRect = el.wrap.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const layout = state.heatmapLayout;
+
+    // Check if within grid bounds
+    if (x < layout.gridX || x > layout.gridX + layout.gridW ||
+        y < layout.gridY || y > layout.gridY + layout.gridH) {
+      state.tooltip.style.display = 'none';
+      return;
+    }
+
+    // Find cell
+    const col = Math.floor((x - layout.gridX) / layout.cellW);
+    const row = Math.floor((y - layout.gridY) / layout.cellH);
+
+    if (row < 0 || row >= 7 || col < 0 || col >= layout.binsPerDay) {
+      state.tooltip.style.display = 'none';
+      return;
+    }
+
+    const temp = layout.grid[row][col];
+    if (!Number.isFinite(temp)) {
+      state.tooltip.style.display = 'none';
+      return;
+    }
+
+    // Calculate time for this cell
+    const minOfDay = col * HEATMAP_BIN_MIN;
+    const hours = Math.floor(minOfDay / 60);
+    const mins = minOfDay % 60;
+    const timeStr = `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+
+    state.tooltip.textContent = `${DAYS[row]} ${timeStr} - ${temp.toFixed(1)}°C`;
+    state.tooltip.style.display = 'block';
+
+    // Position relative to wrap, with offset
+    const tooltipX = e.clientX - wrapRect.left + 10;
+    const tooltipY = e.clientY - wrapRect.top + 10;
+
+    state.tooltip.style.left = `${tooltipX}px`;
+    state.tooltip.style.top = `${tooltipY}px`;
+  }
+
   function renderHeatmap() {
     ensureHeatmapCtx();
     const { pxW, pxH, dpr } = setCanvasDpiSize();
@@ -440,6 +581,9 @@
     const series = (state.heatMetric === 'set') ? state.set : state.measured;
     const { grid, binsPerDay } = binWeek(series, weekStartMs);
 
+    // Use default range (17-23°C) but extend if data goes beyond
+    const { min: minTemp, max: maxTemp } = findGridMinMax(grid, HEATMAP_MIN_C, HEATMAP_MAX_C);
+
     // Layout (in CSS pixels after ctx.scale(dpr))
     const pad = 8;
     const topHeaderH = 18;
@@ -451,6 +595,12 @@
 
     const cellW = gridW / binsPerDay;
     const cellH = gridH / 7;
+
+    // Store layout for hit detection
+    state.heatmapLayout = {
+      grid, binsPerDay, gridX, gridY, gridW, gridH, cellW, cellH,
+      minTemp, maxTemp
+    };
 
     // Time labels (every 2h)
     ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
@@ -478,7 +628,7 @@
       for (let c = 0; c < binsPerDay; c++) {
         const v = grid[r][c];
         if (!Number.isFinite(v)) continue; // keep blank (current/future bins stay empty)
-        ctx.fillStyle = heatColor(v);
+        ctx.fillStyle = heatColor(v, minTemp, maxTemp);
         const x = gridX + c * cellW;
         const y = gridY + r * cellH;
         ctx.fillRect(x, y, cellW + 0.5, cellH + 0.5);
