@@ -25,7 +25,7 @@ if ($curl_errno) {
     echo "Error";
 } else {
     http_response_code(200);
-    echo $response;
+    echo "Ok";
 }
 
 curl_close($ch);
