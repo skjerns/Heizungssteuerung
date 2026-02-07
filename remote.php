@@ -1,40 +1,31 @@
 <?php
 
-$config = json_decode(file_get_contents('config.json'), true);
+$target_host = '192.168.0.100:5665';
 
-$SECRET = $config['remote_secret'];
-$SSH_KEY = $config['remote_ssh_key'];
-$TARGET_USER = $config['remote_target_user'];
-$TARGET_IP = $config['remote_target_ip'];
+// Get the query string from the request (e.g., ?shutdown becomes "shutdown")
+$query_string = $_SERVER['QUERY_STRING'] ?? '';
 
-function send_signal($ip, $user, $key) {
-    $cmd = sprintf(
-        '/usr/bin/ssh -T -i %s ' .
-        '-o StrictHostKeyChecking=no ' .
-        '-o UserKnownHostsFile=/dev/null ' .
-        '-o GlobalKnownHostsFile=/dev/null ' .
-        '%s@%s 2>&1',
-        escapeshellarg($key),
-        escapeshellarg($user),
-        escapeshellarg($ip)
-    );
+// Build the target URL - the query string becomes the path
+// e.g., ?shutdown becomes /shutdown
+$endpoint = '/' . $query_string;
+$target_url = 'http://' . $target_host . $endpoint;
 
-    exec($cmd, $output, $ret);
-    $out = implode("\n", $output);
+// Make the request using cURL
+$ch = curl_init($target_url);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+curl_setopt($ch, CURLOPT_TIMEOUT, 30);
 
-    if ($ret === 0) {
-        return "Suspend signal sent. Output:\n" . $out;
-    }
+$response = curl_exec($ch);
+$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
-    return "Error. Code: $ret\nOutput:\n" . $out;
+if (curl_errno($ch)) {
+    http_response_code(500);
+    echo "Error: " . curl_error($ch);
+} else {
+    http_response_code($http_code);
+    echo $response;
 }
 
-if (isset($_GET['sleep']) && $_GET['sleep'] === $SECRET) {
-    echo send_signal($TARGET_IP, $TARGET_USER, $SSH_KEY);
-    exit;
-}
-
-http_response_code(403);
-echo "Unauthorized";
+curl_close($ch);
 ?>
-
