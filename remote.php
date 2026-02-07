@@ -2,7 +2,7 @@
 
 $target_host = '192.168.0.100:5665';
 
-// Get the query string from the request (e.g., ?shutdown becomes "shutdown")
+// Get the query string from the reques
 $query_string = $_SERVER['QUERY_STRING'] ?? '';
 
 // Build the target URL - the query string becomes the path
