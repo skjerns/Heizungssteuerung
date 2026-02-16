@@ -104,14 +104,15 @@ def set_thermostat(thermostat, value):
     value = value.strip()
 
     if value=='away':
-        # I'm away and wifi is not connected: turn off heating and set manual
         end_date = datetime.now() + timedelta(weeks=12)
         thermostat.set_away(end_date, thermostat.eco_temperature)
         requested = f'away=> {thermostat.eco_temperature}'
     elif value=='home':
-        # I'm home but wifi is not connected: turn on heating but manual
-        thermostat.set_mode(Mode.Auto)
-        requested = f'home=> {thermostat.comfort_temperature}'
+        if 7 < datetime.now().hour < 21:
+            thermostat.target_temperature = 20.5
+            requested = f'home => {thermostat.target_temperature}'
+        else:
+            requested = 'home => outside heating period, no change'
     else:
         try:
             value_float = round(float(value)*2)/2
@@ -119,15 +120,15 @@ def set_thermostat(thermostat, value):
             requested = f'manual => value={value_float}'
         except ValueError:
             requested = f'ERROR, value={value}, unknown'
+        telegram_send.send(messages=[escape(f'{str(thermostat)} // requested={requested}')])
 
 
-    telegram_send.send(messages=[escape(f'{str(thermostat)} // requested={requested}')])
     log(f'{str(thermostat)} // requested={requested}')
-    
+
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
     with open(config['eq3_temperature_csv'], 'a') as f:
         f.write(f'{timestamp}, {value}\n')
-        
+
     return # Success
 
 
