@@ -8,25 +8,23 @@ Create a `config.json` file and fill in the following values:
 
 ```json
 {
-    "value_file_path": "/path/to/value/file",
     "thermostat_mac_address": "00:1A:22:00:00:00",
-    "remote_secret": "a_very_secret_string",
-    "remote_ssh_key": "/path/to/your/ssh/key",
-    "remote_target_user": "user",
-    "remote_target_ip": "192.168.1.100",
-    "control_script_path": "/path/to/control.py"
+    "control_script_path": "/path/to/control.py",
+    "room_temperature_csv": "/path/to/room_temp.csv",
+    "eq3_temperature_csv": "/path/to/eq3_temp.csv",
+    "wol_mac": "00:00:00:00:00:00",
+    "wol_broadcast": "192.168.0.255"
 }
 ```
 
 ### Options
 
-* `value_file_path`: Path to the file that stores the desired thermostat value.
-* `thermostat_mac_address`: The MAC address of your EQ3 bluetooth thermostat.
-* `remote_secret`: A secret string used to authenticate the remote `sleep` command.
-* `remote_ssh_key`: Path to the SSH key used to connect to the remote machine for the `sleep` command.
-* `remote_target_user`: The username for the SSH connection for the `sleep` command.
-* `remote_target_ip`: The IP address of the remote machine for the `sleep` command.
-* `control_script_path`: Absolute path to the `control.py` script.
+* `thermostat_mac_address`: The MAC address of the EQ3 bluetooth thermostat.
+* `control_script_path`: Absolute path to the `eq3_control.py` script.
+* `room_temperature_csv`: Path to the CSV log of measured room temperatures.
+* `eq3_temperature_csv`: Path to the CSV log of thermostat target temperatures.
+* `wol_mac`: MAC address of the machine to wake via the `?wol` endpoint.
+* `wol_broadcast`: Broadcast address used to send the Wake-on-LAN magic packet.
 
 ### Telegram
-The `control.py` script uses `telegram_send` to send notifications. You need to configure it separately. See the `telegram-send` documentation for instructions.
+The `eq3_control.py` script uses `telegram_send` to send notifications. You need to configure it separately. See the `telegram-send` documentation for instructions.

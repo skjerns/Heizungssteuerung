@@ -104,10 +104,12 @@ def set_thermostat(thermostat, value):
     value = value.strip()
 
     if value=='away':
+        # if I'm leaving home, always turn off heating
         end_date = datetime.now() + timedelta(weeks=12)
         thermostat.set_away(end_date, thermostat.eco_temperature)
         requested = f'away=> {thermostat.eco_temperature}'
     elif value=='home':
+        # enable on location based activation only during the day
         if 7 < datetime.now().hour < 21:
             thermostat.target_temperature = 20.5
             requested = f'home => {thermostat.target_temperature}'

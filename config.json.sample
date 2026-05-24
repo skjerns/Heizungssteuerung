@@ -2,5 +2,7 @@
     "thermostat_mac_address": "00:1A:22:00:00:00",
     "control_script_path": "/path/to/control.py",
     "room_temp_file": "/var/log/room_temp.log",
-    "eq3_temp_file": "/var/log/eq3_temp.log"
+    "eq3_temp_file": "/var/log/eq3_temp.log",
+    "wol_mac": "00:00:00:00:00:00",
+    "wol_broadcast": "192.168.0.255"
 }
