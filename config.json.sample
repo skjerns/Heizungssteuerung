@@ -1,8 +1,7 @@
 {
-    "thermostat_mac_address": "00:1A:22:00:00:00",
-    "control_script_path": "/path/to/control.py",
-    "room_temp_file": "/var/log/room_temp.log",
-    "eq3_temp_file": "/var/log/eq3_temp.log",
+    "trv_gateway_host": "192.168.0.95",
+    "trv_id": 200,
+    "control_script_path": "/path/to/trv_control.py",
     "wol_mac": "00:00:00:00:00:00",
     "wol_broadcast": "192.168.0.255"
 }
